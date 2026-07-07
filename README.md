@@ -24,6 +24,8 @@ Data disimpan lokal di SQLite (`meter.db`), per-user Telegram.
 ## Disklaimer
 Bot ini tidak afiliasi dengan PT PLN (Persero). Data tarif yang digunakan di dalam bot mengacu pada tarif listrik PLN Triwulan II 2026 yang bersumber dari pengumuman resmi. Untuk informasi resmi dan mutakhir, silakan merujuk ke situs PLN atau Kementerian Energi dan Sumber Daya Mineral (ESDM).
 
+**Catatan estimasi biaya:** Estimasi tagihan di bot dihitung dari tarif dasar + PPN 10%. Tagihan resmi mungkin ada biaya admin/pemeliharaan kecil lain, jadi angka bot bisa sedikit lebih rendah dari tagihan asli.
+
 ## 1. Clone repo ini
 
 ```bash
@@ -41,14 +43,14 @@ Isi file `.env` dengan value kamu sendiri:
 
 - `BOT_TOKEN` — dapat dari [@BotFather](https://t.me/BotFather) Telegram
 - `OPENROUTER_API_KEY` — opsional, untuk fitur AI. Jika tidak diisi, fitur AI nonaktif
-- `AI_MODEL` — opsional, default: `meta-llama/llama-4-maverick:free`
+- `AI_MODEL` — opsional, default: `openrouter/free`
 
 Contoh `.env`:
 
 ```env
 BOT_TOKEN=123456:ABC-DEF...
 OPENROUTER_API_KEY=sk-or-...
-AI_MODEL=meta-llama/llama-4-maverick:free
+AI_MODEL=openrouter/free
 ```
 
 ## 3. Install dependencies
@@ -105,10 +107,5 @@ Catatan:
 | `/estimasi [jam/hari]` | Estimasi konsumsi dari peralatan |
 
 ## Tarif Golongan Tersedia
+
 `subsidi_450_va`, `subsidi_900_va`, `r1_900_va`, `r1_1300_va`, `r1_2200_va`, `r2_3500_va`, `r2_5500_va`, `r3_6600_va`, `b2_6600_va`, `p1_6600_va`
-
-
-## Disklaimer
-Bot ini tidak afiliasi dengan PT PLN (Persero). Data tarif yang digunakan di dalam bot mengacu pada tarif listrik PLN Triwulan II 2026 yang bersumber dari pengumuman resmi. Untuk informasi resmi dan mutakhir, silakan merujuk ke situs PLN atau Kementerian Energi dan Sumber Daya Mineral (ESDM).
-
-Lihat README repo untuk detail struktur folder dan troubleshooting.

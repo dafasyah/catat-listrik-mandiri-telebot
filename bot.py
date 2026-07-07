@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 TOKEN = os.getenv("BOT_TOKEN")
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "meter.db")
-DEFAULT_AI_MODEL = os.getenv("AI_MODEL", "meta-llama/llama-4-maverick:free")
+DEFAULT_AI_MODEL = os.getenv("AI_MODEL", "openrouter/free")
 
 PLN_TARIFF_2026 = {
     "subsidi_450_va": {"daya": "450 VA", "golongan": "Subsidi", "tarif": 415},
@@ -35,6 +35,7 @@ PLN_TARIFF_2026 = {
     "b2_6600_va": {"daya": "6.600 VA", "golongan": "B-2/TR (Bisnis)", "tarif": 1444.70},
     "p1_6600_va": {"daya": "6.600 VA", "golongan": "P-1/TR (Pemerintah)", "tarif": 1699.53},
 }
+PPN_RATE = 0.10
 
 if not TOKEN:
     raise RuntimeError("BOT_TOKEN environment variable belum di-set!")
@@ -185,6 +186,16 @@ def set_last_anomaly_alert_date(user_id: int, alert_date: str):
     conn.close()
 
 
+def calculate_est_cost(kwh: float, tariff_id: str | None = None) -> tuple[float, float, float]:
+    if not tariff_id or tariff_id not in PLN_TARIFF_2026:
+        return kwh, None, None
+    base_tariff = PLN_TARIFF_2026[tariff_id]["tarif"]
+    subtotal = kwh * base_tariff
+    ppn = subtotal * PPN_RATE
+    total = subtotal + ppn
+    return round(total), round(base_tariff, 2), round(ppn, 2)
+
+
 def add_appliance(user_id: int, name: str, watt: float, volt: float, qty: int, hours_per_day: float):
     conn = get_conn()
     cur = conn.cursor()
@@ -319,6 +330,8 @@ def _ask_openrouter(prompt: str) -> str:
             if content:
                 return content.strip()
             return "AI tidak memberikan jawaban."
+        if resp.status_code == 404:
+            return "Gagal memanggil AI: model tidak ditemukan (404). Cek pengaturan AI_MODEL."
         return f"Gagal memanggil AI (HTTP {resp.status_code})."
     except Exception as e:
         return f"Error memanggil AI: {e}"
@@ -484,9 +497,8 @@ async def total(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tariff_id = get_user_tariff(user_id)
     line = ""
     if tariff_id and tariff_id in PLN_TARIFF_2026:
-        tariff = PLN_TARIFF_2026[tariff_id]["tarif"]
-        est_cost = round(est_monthly * tariff)
-        line = f"Estimasi tagihan: Rp {est_cost:,} (tarif Rp {tariff:,}/kWh)\n"
+        est_cost, base_tariff, _ = calculate_est_cost(est_monthly, tariff_id)
+        line = f"Estimasi tagihan: Rp {est_cost:,} (tarif dasar Rp {base_tariff:,.2f}/kWh + PPN 10%)\n"
 
     text = (
         f"Periode: {first['date']} s/d {last['date']} ({days} hari)\n"
@@ -589,10 +601,10 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     avg = round(total / len(rows), 2)
     tariff_id = get_user_tariff(user_id)
     if tariff_id and tariff_id in PLN_TARIFF_2026:
-        est_cost = round(total * PLN_TARIFF_2026[tariff_id]["tarif"])
+        est_cost, base_tariff, _ = calculate_est_cost(total, tariff_id)
         lines.append(f"\nTotal: {round(total, 2)} kWh")
         lines.append(f"Rata-rata/hari: {avg} kWh")
-        lines.append(f"Estimasi tagihan: Rp {est_cost:,} (tarif Rp {PLN_TARIFF_2026[tariff_id]['tarif']:,.2f}/kWh)")
+        lines.append(f"Estimasi tagihan: Rp {est_cost:,} (tarif dasar Rp {base_tariff:,.2f}/kWh + PPN 10%)")
     else:
         lines.append(f"\nTotal: {round(total, 2)} kWh")
         lines.append(f"Rata-rata/hari: {avg} kWh")
@@ -639,8 +651,8 @@ async def mingguan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if tariff_id and tariff_id in PLN_TARIFF_2026:
         lines = text.split("\n")
         usage = float(lines[2].split(": ")[1].split(" ")[0])
-        est = round(usage * PLN_TARIFF_2026[tariff_id]["tarif"])
-        text += f"Estimasi tagihan: Rp {est:,}\n"
+        est_cost, base_tariff, _ = calculate_est_cost(usage, tariff_id)
+        text += f"Estimasi tagihan: Rp {est_cost:,} (tarif dasar Rp {base_tariff:,.2f}/kWh + PPN 10%)\n"
     await update.message.reply_text(text)
 
 
@@ -662,8 +674,8 @@ async def bulanan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tariff_id = get_user_tariff(update.effective_user.id)
     extra = ""
     if tariff_id and tariff_id in PLN_TARIFF_2026:
-        est = round(usage * PLN_TARIFF_2026[tariff_id]["tarif"])
-        extra = f"Estimasi tagihan: Rp {est:,} (tarif Rp {PLN_TARIFF_2026[tariff_id]['tarif']:,.2f}/kWh)\n"
+        est_cost, base_tariff, _ = calculate_est_cost(usage, tariff_id)
+        extra = f"Estimasi tagihan: Rp {est_cost:,} (tarif dasar Rp {base_tariff:,.2f}/kWh + PPN 10%)\n"
 
     await update.message.reply_text(
         f"Rekap bulan: {target}\n"
@@ -928,7 +940,7 @@ async def estimasi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tariff_id = get_user_tariff(user_id)
     est_cost = None
     if tariff_id and tariff_id in PLN_TARIFF_2026:
-        est_cost = round(daily_kwh * 30 * PLN_TARIFF_2026[tariff_id]["tarif"])
+        est_cost, base_tariff, _ = calculate_est_cost(daily_kwh * 30, tariff_id)
 
     lines = [f"Estimasi konsumsi ({len(rows)} peralatan):\n"]
     for r in rows:
@@ -942,7 +954,6 @@ async def estimasi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append("Set /golongan untuk estimasi biaya bulanan.")
 
     await update.message.reply_text("\n".join(lines))
-
 
 
 async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
