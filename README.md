@@ -14,9 +14,13 @@ Bot Telegram untuk catat nomor meter listrik mandiri, plus ringkasan, grafik, da
 - Reminder harian: `/reminder <jam>` atau `/reminder off`
 - Pencarian fleksibel: `/cari <dd-mm-yyyy|mm-yyyy|yyyy>`
 - Tarif PLN 2026 + personal golongan: `/tarif` dan `/golongan <kode>`
+- AI khusus listrik dengan guardrails: `/ai <pertanyaan>`
 - Kirim angka saja untuk catat cepat
 
 Data disimpan lokal di SQLite (`meter.db`), per-user Telegram.
+
+## Disklaimer
+Bot ini tidak afiliasi dengan PT PLN (Persero). Data tarif yang digunakan di dalam bot mengacu pada tarif listrik PLN Triwulan II 2026 yang bersumber dari pengumuman resmi. Untuk informasi resmi dan mutakhir, silakan merujuk ke situs PLN atau Kementerian Energi dan Sumber Daya Mineral (ESDM).
 
 ## 1. Clone repo ini
 
@@ -95,6 +99,7 @@ Bot ini tidak afiliasi dengan PT PLN (Persero). Data tarif yang digunakan di dal
 | `/cari <dd-mm-yyyy|mm-yyyy|yyyy>` | Cari catatan |
 | `/tarif` | Daftar tarif PLN 2026 |
 | `/golongan <kode>` | Atur tarif personal |
+| `/ai <pertanyaan>` | Tanya AI khusus listrik |
 
 ## Tarif Golongan Tersedia
 `subsidi_450_va`, `subsidi_900_va`, `r1_900_va`, `r1_1300_va`, `r1_2200_va`, `r2_3500_va`, `r2_5500_va`, `r3_6600_va`, `b2_6600_va`, `p1_6600_va`

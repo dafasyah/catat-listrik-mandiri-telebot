@@ -201,6 +201,59 @@ def parse_custom_date_time(value: str) -> str | None:
         return None
 
 
+def _electricity_related(text: str) -> bool:
+    keywords = [
+        "listrik", "kwh", "meter", "pln", "tarif", "daya", "hemat",
+        "tagihan", "konsumsi", "golongan", "subsidi", "va", "watt",
+        "kabel", "lampu", "pembangkit", "transmisi", "distribusi",
+        "pembacaan", "angka", "meteran", "sambungan", "token",
+        "prepaid", "postpaid", "tegangan", "arus", "booster",
+        "ehp", "estimasi", "biaya", "ril", "pulsa", "sumber",
+        "beban", "puncak", "hemat"
+    ]
+    lowered = text.lower()
+    return any(k in lowered for k in keywords)
+
+
+def _ask_openrouter(prompt: str) -> str:
+    if not OPENROUTER_KEY:
+        return "Fitur AI belum aktif: OPENROUTER_API_KEY belum di-set."
+    system_prompt = (
+        "Kamu adalah asisten bot catat meter listrik. "
+        "Jawab HANYA topik terkait: listrik, kWh, meter, tarif PLN, hemat listrik, "
+        "cara baca meter, tagihan listrik, dan konsumsi listrik. "
+        "Jika pertanyaan di luar topik, jawab singkat: 'Maaf, saya cuma bisa bantu soal listrik.' "
+        "Jawab singkat, jelas, dan praktis."
+    )
+    payload = {
+        "model": DEFAULT_AI_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ],
+    }
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_KEY}",
+        "Content-Type": "application/json",
+    }
+    try:
+        resp = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if content:
+                return content.strip()
+            return "AI tidak memberikan jawaban."
+        return f"Gagal memanggil AI (HTTP {resp.status_code})."
+    except Exception as e:
+        return f"Error memanggil AI: {e}"
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "Halo! Bot catat meter listrik.\n\n"
@@ -217,6 +270,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/cari <query> - cari catatan\n"
         "/tarif - info tarif PLN 2026\n"
         "/golongan <kode> - atur tarif personal\n"
+        "/ai <pertanyaan> - tanya AI khusus listrik\n"
         "/help - bantuan\n"
     )
     await update.message.reply_text(text)
@@ -238,6 +292,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/cari <dd-mm-yyyy|mm-yyyy|yyyy> - cari catatan\n"
         "/tarif - daftar tarif PLN 2026\n"
         "/golongan <kode> - atur tarif personal\n"
+        "/ai <pertanyaan> - tanya AI khusus listrik\n"
         "/info - info user\n"
     )
 
@@ -710,6 +765,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "Format: /ai <pertanyaan>\n"
+            "Contoh: /ai apa itu golongan R-1/TR PLN?\n"
+            "Contoh: /ai cara hemat listrik di rumah"
+        )
+        return
+
+    prompt = " ".join(context.args).strip()
+    if not _electricity_related(prompt):
+        await update.message.reply_text("Maaf, saya cuma bisa bantu soal listrik.")
+        return
+
+    reply = _ask_openrouter(prompt)
+    if not reply:
+        reply = "AI tidak memberikan jawaban."
+    await update.message.reply_text(reply)
+
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error("Exception:", exc_info=context.error)
 
@@ -754,6 +829,7 @@ def main():
     app.add_handler(CommandHandler("cari", cari))
     app.add_handler(CommandHandler("tarif", tarif))
     app.add_handler(CommandHandler("golongan", golongan))
+    app.add_handler(CommandHandler("ai", ai_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error_handler)
 
