@@ -53,7 +53,18 @@ def init_db():
             tariff TEXT,
             reminder_time TEXT,
             reminder_enabled INTEGER DEFAULT 0,
-            last_anomaly_alert_date TEXT
+            last_anomaly_alert_date TEXT,
+            default_voltage REAL
+        );
+        CREATE TABLE IF NOT EXISTS appliances (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            watt REAL NOT NULL,
+            volt REAL NOT NULL,
+            qty INTEGER DEFAULT 1,
+            hours_per_day REAL DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
         );
         """
     )
@@ -171,6 +182,62 @@ def set_last_anomaly_alert_date(user_id: int, alert_date: str):
     conn.close()
 
 
+def add_appliance(user_id: int, name: str, watt: float, volt: float, qty: int, hours_per_day: float):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO appliances (user_id, name, watt, volt, qty, hours_per_day)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (user_id, name, float(watt), float(volt), int(qty), float(hours_per_day)),
+    )
+    conn.commit()
+    conn.close()
+
+
+def remove_appliance(user_id: int, appliance_id: int) -> bool:
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM appliances WHERE id=? AND user_id=?", (appliance_id, user_id))
+    conn.commit()
+    removed = cur.rowcount > 0
+    conn.close()
+    return removed
+
+
+def list_appliances(user_id: int):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, name, watt, volt, qty, hours_per_day FROM appliances WHERE user_id=? ORDER BY id ASC",
+        (user_id,),
+    )
+    rows = [
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "watt": r["watt"],
+            "volt": r["volt"],
+            "qty": r["qty"],
+            "hours_per_day": r["hours_per_day"],
+        }
+        for r in cur.fetchall()
+    ]
+    conn.close()
+    return rows
+
+
+def estimate_daily_kwh(user_id: int, hours_per_day_override: float | None = None):
+    rows = list_appliances(user_id)
+    total = 0.0
+    for r in rows:
+        h = hours_per_day_override if hours_per_day_override is not None else r["hours_per_day"]
+        total += r["watt"] * r["qty"] * h / 1000
+    return round(total, 2), rows
+
+
+
 def parse_summary_query(args):
     if not args:
         now = date.today()
@@ -267,6 +334,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/grafik [mm-yyyy] - grafik tren pemakaian\n"
         "/cek_anomali - deteksi lonjakan meter\n"
         "/reminder <jam|off> - set reminder harian\n"
+        "/barang_tambah <nama> <watt> <volt> [qty] [jam/hari] - tambah peralatan\n"
+        "/barang_hapus <id> - hapus peralatan\n"
+        "/barang_list - daftar peralatan\n"
+        "/estimasi [jam/hari] - estimasi konsumsi dari daftar peralatan\n"
         "/cari <query> - cari catatan\n"
         "/tarif - info tarif PLN 2026\n"
         "/golongan <kode> - atur tarif personal\n"
@@ -289,6 +360,10 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/grafik [mm-yyyy] - grafik tren pemakaian\n"
         "/cek_anomali - deteksi lonjakan meter\n"
         "/reminder <jam|off> - contoh: /reminder 20:00 atau /reminder off\n"
+        "/barang_tambah <nama> <watt> <volt> [qty] [jam/hari] - tambah peralatan rumah\n"
+        "/barang_hapus <id> - hapus peralatan berdasarkan id\n"
+        "/barang_list - lihat daftar peralatan\n"
+        "/estimasi [jam/hari] - estimasi konsumsi kWh dari peralatan yang tercatat\n"
         "/cari <dd-mm-yyyy|mm-yyyy|yyyy> - cari catatan\n"
         "/tarif - daftar tarif PLN 2026\n"
         "/golongan <kode> - atur tarif personal\n"
@@ -765,6 +840,108 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def barang_tambah(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "Format: /barang_tambah <nama> <watt> <volt> [qty] [jam/hari]\n"
+            "Contoh: /barang_tambah kulkas 150 220 1 24"
+        )
+        return
+
+    name = context.args[0]
+    watt_raw = context.args[1].replace(",", ".")
+    volt_raw = context.args[2].replace(",", ".")
+    qty_raw = context.args[3] if len(context.args) > 3 else "1"
+    hours_raw = context.args[4] if len(context.args) > 4 else "1"
+
+    if not re.fullmatch(r"\d+(\.\d+)?", watt_raw):
+        await update.message.reply_text("Watt harus angka. Contoh: /barang_tambah kulkas 150 220")
+        return
+    if not re.fullmatch(r"\d+(\.\d+)?", volt_raw):
+        await update.message.reply_text("Volt harus angka. Contoh: /barang_tambah kulkas 150 220")
+        return
+    if not re.fullmatch(r"\d+", qty_raw):
+        await update.message.reply_text("Qty harus angka bulat. Contoh: /barang_tambah lampu 10 220 2 8")
+        return
+    if not re.fullmatch(r"\d+(\.\d+)?", hours_raw):
+        await update.message.reply_text("Jam/hari harus angka. Contoh: /barang_tambah lampu 10 220 2 8")
+        return
+
+    add_appliance(user_id, name, float(watt_raw), float(volt_raw), int(qty_raw), float(hours_raw))
+    await update.message.reply_text(
+        f"Peralatan disimpan: {name}\n"
+        f"Watt: {watt_raw} W\n"
+        f"Volt: {volt_raw} V\n"
+        f"Qty: {qty_raw}\n"
+        f"Jam/hari: {hours_raw}"
+    )
+
+
+async def barang_hapus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not context.args or not re.fullmatch(r"\d+", context.args[0]):
+        await update.message.reply_text("Format: /barang_hapus <id>\nGunakan /barang_list untuk lihat id.")
+        return
+
+    appliance_id = int(context.args[0])
+    if remove_appliance(user_id, appliance_id):
+        await update.message.reply_text(f"Peralatan id {appliance_id} dihapus.")
+    else:
+        await update.message.reply_text("Id tidak ditemukan atau bukan milik Anda.")
+
+
+async def barang_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    rows = list_appliances(user_id)
+    if not rows:
+        await update.message.reply_text("Belum ada peralatan. Pakai /barang_tambah <nama> <watt> <volt> [qty] [jam/hari]")
+        return
+
+    lines = [f"Daftar peralatan ({len(rows)}):"]
+    total_watt = 0.0
+    for r in rows:
+        lines.append(
+            f"- id {r['id']}: {r['name']} | {r['watt']}W | {r['volt']}V | qty {r['qty']} | {r['hours_per_day']} jam/hari"
+        )
+        total_watt += r["watt"] * r["qty"]
+    lines.append(f"\nTotal watt peralatan: {round(total_watt, 2)} W")
+    await update.message.reply_text("\n".join(lines))
+
+
+async def estimasi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    hours_override = None
+    if context.args:
+        h_raw = context.args[0].replace(",", ".")
+        if re.fullmatch(r"\d+(\.\d+)?", h_raw):
+            hours_override = float(h_raw)
+
+    daily_kwh, rows = estimate_daily_kwh(user_id, hours_override)
+    if not rows:
+        await update.message.reply_text("Belum ada peralatan. Pakai /barang_tambah <nama> <watt> <volt> [qty] [jam/hari]")
+        return
+
+    tariff_id = get_user_tariff(user_id)
+    est_cost = None
+    if tariff_id and tariff_id in PLN_TARIFF_2026:
+        est_cost = round(daily_kwh * 30 * PLN_TARIFF_2026[tariff_id]["tarif"])
+
+    lines = [f"Estimasi konsumsi ({len(rows)} peralatan):\n"]
+    for r in rows:
+        h = hours_override if hours_override is not None else r["hours_per_day"]
+        kwh = round(r["watt"] * r["qty"] * h / 1000, 2)
+        lines.append(f"- {r['name']}: {kwh} kWh/hari ({r['watt']}W x {r['qty']} x {h} jam)")
+    lines.append(f"\nTotal estimasi: {daily_kwh} kWh/hari")
+    if est_cost is not None:
+        lines.append(f"Estimasi biaya bulanan: Rp {est_cost:,}")
+    else:
+        lines.append("Set /golongan untuk estimasi biaya bulanan.")
+
+    await update.message.reply_text("\n".join(lines))
+
+
+
 async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
@@ -829,6 +1006,10 @@ def main():
     app.add_handler(CommandHandler("cari", cari))
     app.add_handler(CommandHandler("tarif", tarif))
     app.add_handler(CommandHandler("golongan", golongan))
+    app.add_handler(CommandHandler("barang_tambah", barang_tambah))
+    app.add_handler(CommandHandler("barang_hapus", barang_hapus))
+    app.add_handler(CommandHandler("barang_list", barang_list))
+    app.add_handler(CommandHandler("estimasi", estimasi_cmd))
     app.add_handler(CommandHandler("ai", ai_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error_handler)

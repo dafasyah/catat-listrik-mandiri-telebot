@@ -12,6 +12,8 @@ Bot Telegram untuk catat nomor meter listrik mandiri, plus ringkasan, grafik, da
 - Grafik tren: `/grafik [mm-yyyy]`
 - Deteksi anomali lonjakan: `/cek_anomali`
 - Reminder harian: `/reminder <jam>` atau `/reminder off`
+- Estimasi konsumsi peralatan rumah: `/estimasi [jam/hari]`
+- Manajemen daftar peralatan: `/barang_tambah`, `/barang_hapus`, `/barang_list`
 - Pencarian fleksibel: `/cari <dd-mm-yyyy|mm-yyyy|yyyy>`
 - Tarif PLN 2026 + personal golongan: `/tarif` dan `/golongan <kode>`
 - AI khusus listrik dengan guardrails: `/ai <pertanyaan>`
@@ -97,6 +99,10 @@ Catatan:
 | `/tarif` | Daftar tarif PLN 2026 |
 | `/golongan <kode>` | Atur tarif personal |
 | `/ai <pertanyaan>` | Tanya AI khusus listrik |
+| `/barang_tambah <nama> <watt> <volt> [qty] [jam/hari]` | Tambah peralatan rumah |
+| `/barang_hapus <id>` | Hapus peralatan |
+| `/barang_list` | Lihat daftar peralatan |
+| `/estimasi [jam/hari]` | Estimasi konsumsi dari peralatan |
 
 ## Tarif Golongan Tersedia
 `subsidi_450_va`, `subsidi_900_va`, `r1_900_va`, `r1_1300_va`, `r1_2200_va`, `r2_3500_va`, `r2_5500_va`, `r3_6600_va`, `b2_6600_va`, `p1_6600_va`
