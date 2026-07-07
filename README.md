@@ -73,6 +73,9 @@ Catatan:
 - Jangan upload `.env` dan `meter.db` ke GitHub (sudah diabaikan oleh `.gitignore`)
 - API key aman karena disimpan di environment variables server/VPS
 
+## Disklaimer
+Bot ini tidak afiliasi dengan PT PLN (Persero). Data tarif yang digunakan di dalam bot mengacu pada tarif listrik PLN Triwulan II 2026 yang bersumber dari pengumuman resmi. Untuk informasi resmi dan mutakhir, silakan merujuk ke situs PLN atau Kementerian Energi dan Sumber Daya Mineral (ESDM).
+
 ## Command cepat
 
 | Command | Kegunaan |
