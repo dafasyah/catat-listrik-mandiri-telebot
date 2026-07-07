@@ -91,8 +91,8 @@ Bot ini tidak afiliasi dengan PT PLN (Persero). Data tarif yang digunakan di dal
 | `/bulanan` | Rekap bulan ini |
 | `/grafik [mm-yyyy]` | Grafik tren pemakaian |
 | `/cek_anomali` | Deteksi lonjakan meter |
-| `/reminder <jam | off>` | Set reminder harian |
-| `/cari <dd-mm-yyyy | mm-yyyy | yyyy>` | Cari catatan |
+| `/reminder <jam / off>` | Set reminder harian |
+| `/cari <dd-mm-yyyy / mm-yyyy / yyyy>` | Cari catatan |
 | `/tarif` | Daftar tarif PLN 2026 |
 | `/golongan <kode>` | Atur tarif personal |
 
