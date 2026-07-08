@@ -987,9 +987,11 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 def main():
     init_db()
 
+    job_queue = JobQueue()
     app = (
         Application.builder()
         .token(TOKEN)
+        .job_queue(job_queue)
         .connect_timeout(30)
         .read_timeout(30)
         .pool_timeout(30)
