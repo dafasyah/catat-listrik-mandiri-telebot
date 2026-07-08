@@ -404,7 +404,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/barang_list - daftar peralatan\n"
         "/estimasi [jam/hari] - estimasi konsumsi dari daftar peralatan\n"
         "/tagihan <mm-yyyy> <jumlah> [stand_awal-stand_akhir] - simpan tagihan bulanan\n"
-        "/bandingkan - bandingkan tagihan 2 bulan terakhir\n"
+        "/bandingkan [mm-yyyy mm-yyyy] - bandingkan tagihan (kosong: awal vs akhir)\n"
         "/cari <query> - cari catatan\n"
         "/tarif - info tarif PLN 2026\n"
         "/golongan <kode> - atur tarif personal\n"
@@ -432,7 +432,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/barang_list - lihat daftar peralatan\n"
         "/estimasi [jam/hari] - estimasi konsumsi kWh dari peralatan yang tercatat\n"
         "/tagihan <mm-yyyy> <jumlah> [stand_awal-stand_akhir] - simpan tagihan bulanan\n"
-        "/bandingkan - bandingkan tagihan 2 bulan terakhir\n"
+        "/bandingkan [mm-yyyy mm-yyyy] - bandingkan tagihan (kosong: awal vs akhir)\n"
         "/cari <dd-mm-yyyy|mm-yyyy|yyyy> - cari catatan\n"
         "/tarif - daftar tarif PLN 2026\n"
         "/golongan <kode> - atur tarif personal\n"
@@ -1057,7 +1057,31 @@ async def tagihan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def bandingkan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    history = get_bill_history(user_id, limit=2)
+
+    # Mode 2 argumen: bandingkan 2 bulan spesifik
+    if len(context.args) >= 2:
+        m1 = re.fullmatch(r"(\d{2})-(\d{4})", context.args[0].strip())
+        m2 = re.fullmatch(r"(\d{2})-(\d{4})", context.args[1].strip())
+        if not m1 or not m2:
+            await update.message.reply_text("Format bulan salah. Pakai mm-yyyy, contoh: /bandingkan 2026-06 2026-07")
+            return
+        month_a = f"{m1.group(2)}-{int(m1.group(1)):02d}"
+        month_b = f"{m2.group(2)}-{int(m2.group(1)):02d}"
+        bill_a = get_bill(user_id, month_a)
+        bill_b = get_bill(user_id, month_b)
+        if not bill_a or not bill_b:
+            await update.message.reply_text("Salah satu bulan belum ada datanya. Simpan dulu dengan /tagihan")
+            return
+        # Urutkan: prev = lebih awal, curr = lebih baru
+        if month_a <= month_b:
+            prev, curr = bill_a, bill_b
+        else:
+            prev, curr = bill_b, bill_a
+        await _send_comparison(update, prev, curr)
+        return
+
+    # Mode default: bulan paling awal vs bulan terakhir
+    history = get_bill_history(user_id, limit=100)
     if len(history) < 2:
         await update.message.reply_text(
             "Data tagihan belum cukup. Minimal butuh 2 bulan.\n"
@@ -1065,11 +1089,14 @@ async def bandingkan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    curr = history[0]
-    prev = history[1]
+    curr = history[0]    # terbaru (DESC)
+    prev = history[-1]   # paling awal
+    await _send_comparison(update, prev, curr)
+
+
+async def _send_comparison(update: Update, prev: dict, curr: dict):
     selisih = curr["amount"] - prev["amount"]
     pct = (selisih / prev["amount"] * 100) if prev["amount"] else 0.0
-
     arrow = "naik" if selisih > 0 else ("turun" if selisih < 0 else "sama")
     lines = [
         f"Perbandingan tagihan:",

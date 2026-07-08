@@ -107,7 +107,7 @@ Catatan:
 | `/barang_list` | Lihat daftar peralatan |
 | `/estimasi [jam/hari]` | Estimasi konsumsi dari peralatan |
 | `/tagihan <mm-yyyy> <jumlah> [stand_awal-stand_akhir]` | Simpan tagihan bulanan |
-| `/bandingkan` | Bandingkan tagihan 2 bulan terakhir |
+| `/bandingkan [mm-yyyy mm-yyyy]` | Bandingkan tagihan (kosong: awal vs akhir) |
 
 ## Tarif Golongan Tersedia
 
