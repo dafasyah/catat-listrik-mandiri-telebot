@@ -752,9 +752,13 @@ def set_reminder_job(app: Application, user_id: int, time_str: str):
 
     h, m = map(int, time_str.split(":"))
     wib = ZoneInfo("Asia/Jakarta")
+    utc = ZoneInfo("UTC")
+    # Buat datetime WIB lalu convert ke UTC, ambil waktu-nya
+    wib_dt = datetime.combine(date.today(), dtime(hour=h, minute=m), tzinfo=wib)
+    utc_time = wib_dt.astimezone(utc).timetz()
     app.job_queue.run_daily(
         reminder_job,
-        time=dtime(hour=h, minute=m, tzinfo=wib).astimezone(ZoneInfo("UTC")).replace(tzinfo=None),
+        time=utc_time,
         chat_id=user_id,
         name=f"reminder_{user_id}",
     )
