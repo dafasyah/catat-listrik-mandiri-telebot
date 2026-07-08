@@ -737,6 +737,7 @@ async def reminder_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def reminder_job(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     user_id = job.chat_id
+    logger.info("Reminder triggered for user %s", user_id)
     await context.bot.send_message(
         chat_id=user_id,
         text="Pengingat: jangan lupa catat meter listrik hari ini ⚡",
@@ -1003,6 +1004,7 @@ def main():
     for row in rows:
         if re.fullmatch(r"\d{1,2}:\d{2}", row["reminder_time"]):
             try:
+                logger.info("Restoring reminder for user %s at %s", row["user_id"], row["reminder_time"])
                 set_reminder_job(app, row["user_id"], row["reminder_time"])
             except Exception as e:
                 logger.error("Failed to restore reminder for %s: %s", row["user_id"], e)
