@@ -731,6 +731,7 @@ async def reminder_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     set_user_reminder(user_id, raw)
+    set_reminder_job(context.application, user_id, raw)
     await update.message.reply_text(f"Reminder di-set jam {raw} setiap hari.")
 
 
@@ -744,7 +745,7 @@ async def reminder_job(context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def set_reminder_job(app: Application, user_id: int, time_str: str):
+def set_reminder_job(app: Application, user_id: int, time_str: str):
     existing = app.job_queue.get_jobs_by_name(f"reminder_{user_id}")
     for j in existing:
         j.schedule_removal()
