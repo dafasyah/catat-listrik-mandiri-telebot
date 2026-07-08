@@ -5,6 +5,7 @@ import logging
 import re
 import requests
 from datetime import datetime, date, time as dtime
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from telegram import Update, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, JobQueue
@@ -748,9 +749,10 @@ async def set_reminder_job(app: Application, user_id: int, time_str: str):
         j.schedule_removal()
 
     h, m = map(int, time_str.split(":"))
+    wib = ZoneInfo("Asia/Jakarta")
     app.job_queue.run_daily(
         reminder_job,
-        time=dtime(hour=h, minute=m),
+        time=dtime(hour=h, minute=m, tzinfo=wib),
         chat_id=user_id,
         name=f"reminder_{user_id}",
     )
