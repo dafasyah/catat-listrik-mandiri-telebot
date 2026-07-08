@@ -71,6 +71,15 @@ def init_db():
             hours_per_day REAL DEFAULT 1,
             created_at TEXT DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS bills (
+            user_id INTEGER NOT NULL,
+            month TEXT NOT NULL,
+            amount REAL NOT NULL,
+            stand_start REAL,
+            stand_end REAL,
+            created_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (user_id, month)
+        );
         """
     )
     conn.commit()
@@ -252,6 +261,45 @@ def estimate_daily_kwh(user_id: int, hours_per_day_override: float | None = None
     return round(total, 2), rows
 
 
+def save_bill(user_id: int, month: str, amount: float, stand_start: float | None = None, stand_end: float | None = None):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO bills (user_id, month, amount, stand_start, stand_end)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, month) DO UPDATE SET
+            amount=excluded.amount,
+            stand_start=excluded.stand_start,
+            stand_end=excluded.stand_end
+        """,
+        (user_id, month, amount, stand_start, stand_end),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_bill(user_id: int, month: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM bills WHERE user_id = ? AND month = ?", (user_id, month))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_bill_history(user_id: int, limit: int = 12):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT month, amount, stand_start, stand_end FROM bills WHERE user_id = ? ORDER BY month DESC LIMIT ?",
+        (user_id, limit),
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
 
 def parse_summary_query(args):
     if not args:
@@ -355,6 +403,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/barang_hapus <id> - hapus peralatan\n"
         "/barang_list - daftar peralatan\n"
         "/estimasi [jam/hari] - estimasi konsumsi dari daftar peralatan\n"
+        "/tagihan <mm-yyyy> <jumlah> [stand_awal-stand_akhir] - simpan tagihan bulanan\n"
+        "/bandingkan - bandingkan tagihan 2 bulan terakhir\n"
         "/cari <query> - cari catatan\n"
         "/tarif - info tarif PLN 2026\n"
         "/golongan <kode> - atur tarif personal\n"
@@ -381,6 +431,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/barang_hapus <id> - hapus peralatan berdasarkan id\n"
         "/barang_list - lihat daftar peralatan\n"
         "/estimasi [jam/hari] - estimasi konsumsi kWh dari peralatan yang tercatat\n"
+        "/tagihan <mm-yyyy> <jumlah> [stand_awal-stand_akhir] - simpan tagihan bulanan\n"
+        "/bandingkan - bandingkan tagihan 2 bulan terakhir\n"
         "/cari <dd-mm-yyyy|mm-yyyy|yyyy> - cari catatan\n"
         "/tarif - daftar tarif PLN 2026\n"
         "/golongan <kode> - atur tarif personal\n"
@@ -964,6 +1016,78 @@ async def estimasi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
+async def tagihan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(
+            "Format: /tagihan <mm-yyyy> <jumlah> [stand_awal-stand_akhir]\n"
+            "Contoh: /tagihan 2026-07 804427 1158-1657"
+        )
+        return
+
+    month_raw = context.args[0].strip()
+    m = re.fullmatch(r"(\d{2})-(\d{4})", month_raw)
+    if not m:
+        await update.message.reply_text("Format bulan salah. Pakai mm-yyyy, contoh: 2026-07")
+        return
+    month = f"{m.group(2)}-{int(m.group(1)):02d}"
+
+    amount_raw = context.args[1].replace(".", "").replace(",", "")
+    if not re.fullmatch(r"\d+", amount_raw):
+        await update.message.reply_text("Jumlah tagihan harus angka, contoh: 804427")
+        return
+    amount = float(amount_raw)
+
+    stand_start = stand_end = None
+    if len(context.args) >= 3:
+        sm = re.fullmatch(r"(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)", context.args[2])
+        if sm:
+            stand_start = float(sm.group(1))
+            stand_end = float(sm.group(2))
+        else:
+            await update.message.reply_text("Format stand meter salah. Pakai stand_awal-stand_akhir, contoh: 1158-1657")
+            return
+
+    save_bill(user_id, month, amount, stand_start, stand_end)
+    reply = f"Tagihan {month} disimpan: Rp {amount:,.0f}"
+    if stand_start is not None and stand_end is not None:
+        reply += f"\nStand meter: {stand_start:,.0f} - {stand_end:,.0f} ({stand_end - stand_start:,.0f} kWh)"
+    await update.message.reply_text(reply)
+
+
+async def bandingkan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    history = get_bill_history(user_id, limit=2)
+    if len(history) < 2:
+        await update.message.reply_text(
+            "Data tagihan belum cukup. Minimal butuh 2 bulan.\n"
+            "Simpan dulu dengan /tagihan <mm-yyyy> <jumlah> [stand_awal-stand_akhir]"
+        )
+        return
+
+    curr = history[0]
+    prev = history[1]
+    selisih = curr["amount"] - prev["amount"]
+    pct = (selisih / prev["amount"] * 100) if prev["amount"] else 0.0
+
+    arrow = "naik" if selisih > 0 else ("turun" if selisih < 0 else "sama")
+    lines = [
+        f"Perbandingan tagihan:",
+        f"{prev['month']}: Rp {prev['amount']:,.0f}",
+        f"{curr['month']}: Rp {curr['amount']:,.0f}",
+        f"Selisih: Rp {selisih:,.0f} ({arrow} {abs(pct):.1f}%)",
+    ]
+
+    if curr["stand_start"] is not None and curr["stand_end"] is not None:
+        kwh_curr = curr["stand_end"] - curr["stand_start"]
+        lines.append(f"Pemakaian {curr['month']}: {kwh_curr:,.0f} kWh")
+    if prev["stand_start"] is not None and prev["stand_end"] is not None:
+        kwh_prev = prev["stand_end"] - prev["stand_start"]
+        lines.append(f"Pemakaian {prev['month']}: {kwh_prev:,.0f} kWh")
+
+    await update.message.reply_text("\n".join(lines))
+
+
 async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
@@ -1035,6 +1159,8 @@ def main():
     app.add_handler(CommandHandler("barang_hapus", barang_hapus))
     app.add_handler(CommandHandler("barang_list", barang_list))
     app.add_handler(CommandHandler("estimasi", estimasi_cmd))
+    app.add_handler(CommandHandler("tagihan", tagihan_cmd))
+    app.add_handler(CommandHandler("bandingkan", bandingkan_cmd))
     app.add_handler(CommandHandler("ai", ai_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error_handler)

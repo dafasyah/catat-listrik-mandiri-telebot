@@ -13,6 +13,7 @@ Bot Telegram untuk catat nomor meter listrik mandiri, plus ringkasan, grafik, da
 - Deteksi anomali lonjakan: `/cek_anomali`
 - Reminder harian: `/reminder <jam>` atau `/reminder off`
 - Estimasi konsumsi peralatan rumah: `/estimasi [jam/hari]`
+- Simpan & bandingkan tagihan bulanan: `/tagihan <mm-yyyy> <jumlah> [stand_awal-stand_akhir]`, `/bandingkan`
 - Manajemen daftar peralatan: `/barang_tambah`, `/barang_hapus`, `/barang_list`
 - Pencarian fleksibel: `/cari <dd-mm-yyyy|mm-yyyy|yyyy>`
 - Tarif PLN 2026 + personal golongan: `/tarif` dan `/golongan <kode>`
@@ -105,6 +106,8 @@ Catatan:
 | `/barang_hapus <id>` | Hapus peralatan |
 | `/barang_list` | Lihat daftar peralatan |
 | `/estimasi [jam/hari]` | Estimasi konsumsi dari peralatan |
+| `/tagihan <mm-yyyy> <jumlah> [stand_awal-stand_akhir]` | Simpan tagihan bulanan |
+| `/bandingkan` | Bandingkan tagihan 2 bulan terakhir |
 
 ## Tarif Golongan Tersedia
 
