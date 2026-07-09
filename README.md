@@ -108,6 +108,7 @@ Catatan:
 | `/estimasi [jam/hari]` | Estimasi konsumsi dari peralatan |
 | `/tagihan <mm-yyyy> <jumlah> [stand_awal-stand_akhir]` | Simpan tagihan bulanan |
 | `/bandingkan [mm-yyyy mm-yyyy]` | Bandingkan tagihan (kosong: awal vs akhir) |
+| `/akurasi` | Cek akurasi estimasi bot vs tagihan asli |
 
 ## Tarif Golongan Tersedia
 

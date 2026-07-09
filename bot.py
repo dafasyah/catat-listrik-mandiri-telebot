@@ -405,6 +405,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/estimasi [jam/hari] - estimasi konsumsi dari daftar peralatan\n"
         "/tagihan <mm-yyyy> <jumlah> [stand_awal-stand_akhir] - simpan tagihan bulanan\n"
         "/bandingkan [mm-yyyy mm-yyyy] - bandingkan tagihan (kosong: awal vs akhir)\n"
+        "/akurasi - cek akurasi estimasi bot vs tagihan asli\n"
         "/cari <query> - cari catatan\n"
         "/tarif - info tarif PLN 2026\n"
         "/golongan <kode> - atur tarif personal\n"
@@ -433,6 +434,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/estimasi [jam/hari] - estimasi konsumsi kWh dari peralatan yang tercatat\n"
         "/tagihan <mm-yyyy> <jumlah> [stand_awal-stand_akhir] - simpan tagihan bulanan\n"
         "/bandingkan [mm-yyyy mm-yyyy] - bandingkan tagihan (kosong: awal vs akhir)\n"
+        "/akurasi - cek akurasi estimasi bot vs tagihan asli\n"
         "/cari <dd-mm-yyyy|mm-yyyy|yyyy> - cari catatan\n"
         "/tarif - daftar tarif PLN 2026\n"
         "/golongan <kode> - atur tarif personal\n"
@@ -1115,6 +1117,50 @@ async def _send_comparison(update: Update, prev: dict, curr: dict):
     await update.message.reply_text("\n".join(lines))
 
 
+async def akurasi_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    tariff_id = get_user_tariff(user_id)
+    if not tariff_id:
+        await update.message.reply_text("Set golongan dulu dengan /golongan <kode> untuk akurasi estimasi.")
+        return
+
+    # Ambil semua tagihan yang punya stand meter
+    bills = [
+        b for b in get_bill_history(user_id, limit=100)
+        if b.get("stand_start") is not None and b.get("stand_end") is not None
+    ]
+    if not bills:
+        await update.message.reply_text(
+            "Belum ada data tagihan dengan stand meter.\n"
+            "Simpan dulu: /tagihan <mm-yyyy> <jumlah> <stand_awal-stand_akhir>"
+        )
+        return
+
+    lines = [f"Akurasi estimasi ({len(bills)} bulan):\n"]
+    for bill in reversed(bills):  # dari lama ke baru
+        kwh = bill["stand_end"] - bill["stand_start"]
+        est_cost, base_tariff, ppn = calculate_est_cost(kwh, tariff_id)
+        actual = bill["amount"]
+        diff = actual - est_cost
+        error_pct = (abs(diff) / actual * 100) if actual else 0.0
+        status = ""
+        if error_pct <= 5:
+            status = "Sangat akurat"
+        elif error_pct <= 10:
+            status = "Cukup akurat"
+        else:
+            status = "Perlu dicek"
+
+        lines.append(
+            f"{bill['month']}: {kwh:,.0f} kWh\n"
+            f"Estimasi: Rp {est_cost:,} | Tagihan: Rp {actual:,}\n"
+            f"Selisih: Rp {diff:+,} ({error_pct:.1f}%)\n"
+            f"Status: {status}\n"
+        )
+
+    await update.message.reply_text("\n".join(lines))
+
+
 async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
@@ -1188,6 +1234,7 @@ def main():
     app.add_handler(CommandHandler("estimasi", estimasi_cmd))
     app.add_handler(CommandHandler("tagihan", tagihan_cmd))
     app.add_handler(CommandHandler("bandingkan", bandingkan_cmd))
+    app.add_handler(CommandHandler("akurasi", akurasi_cmd))
     app.add_handler(CommandHandler("ai", ai_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error_handler)
